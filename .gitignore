@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+*.log
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Node / React frontend
+frontend/node_modules/
+frontend/dist/
+dist/
+
+# Build output (deploy ZIP)
+marbefa-hostinger.zip
+deploy_stage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
