@@ -1,3 +1,4 @@
+from django.db.models import Sum, Avg, Count
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -177,3 +178,149 @@ def run_anomaly(request):
         'alerts_created': len(alerts),
         'alerts': AnomalyAlertSerializer(alerts, many=True).data,
     })
+
+
+# ---------- User Management (Manager only) ----------
+
+class IsManager(IsAuthenticated):
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and request.user.role == 'Manager'
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    """CRUD for users. Managers only."""
+    queryset = User.objects.all().order_by('-date_joined')
+    permission_classes = [IsManager]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return UserCreateSerializer
+        return UserSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        if user == request.user:
+            return Response({'error': 'You cannot delete your own account.'}, status=400)
+        return super().destroy(request, *args, **kwargs)
+
+
+# ---------- Reports ----------
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def report_summary(request, batch_id):
+    """Return production summary stats for a batch over a date range."""
+    try:
+        batch = FlockBatch.objects.get(batch_id=batch_id)
+    except FlockBatch.DoesNotExist:
+        return Response({'error': 'Batch not found'}, status=404)
+
+    start_date = request.query_params.get('start_date')
+    end_date = request.query_params.get('end_date')
+
+    qs = DailyLog.objects.filter(batch=batch)
+    if start_date:
+        qs = qs.filter(record_date__gte=start_date)
+    if end_date:
+        qs = qs.filter(record_date__lte=end_date)
+    qs = qs.order_by('record_date')
+
+    if not qs.exists():
+        return Response({'batch_id': batch_id, 'days': 0, 'message': 'No data for selected period.'})
+
+    agg = qs.aggregate(
+        total_feed=Sum('feed_consumed_kg'),
+        total_water=Sum('water_consumed_l'),
+        total_mortality=Sum('mortality_count'),
+        total_eggs_small=Sum('eggs_small'),
+        total_eggs_medium=Sum('eggs_medium'),
+        total_eggs_large=Sum('eggs_large'),
+        total_eggs_xl=Sum('eggs_xl'),
+        total_eggs_reject=Sum('eggs_reject'),
+        avg_daily_eggs=Avg('eggs_small') + Avg('eggs_medium') + Avg('eggs_large') + Avg('eggs_xl'),
+    )
+
+    total_eggs = sum(
+        agg[f] or 0 for f in
+        ['total_eggs_small', 'total_eggs_medium', 'total_eggs_large', 'total_eggs_xl']
+    )
+    total_eggs_with_reject = total_eggs + (agg['total_eggs_reject'] or 0)
+    total_feed = agg['total_feed'] or 0
+    egg_mass_kg = (
+        (agg['total_eggs_small'] or 0) * 0.045 +
+        (agg['total_eggs_medium'] or 0) * 0.053 +
+        (agg['total_eggs_large'] or 0) * 0.060 +
+        (agg['total_eggs_xl'] or 0) * 0.066
+    )
+    fcr = round(total_feed / egg_mass_kg, 3) if egg_mass_kg > 0 else 0
+
+    return Response({
+        'batch_id': batch.batch_id,
+        'breed_type': batch.breed_type,
+        'start_date': str(qs.first().record_date),
+        'end_date': str(qs.last().record_date),
+        'days': qs.count(),
+        'total_feed_kg': round(total_feed, 2),
+        'total_water_l': round(agg['total_water'] or 0, 2),
+        'total_mortality': agg['total_mortality'] or 0,
+        'total_eggs': total_eggs,
+        'total_eggs_reject': agg['total_eggs_reject'] or 0,
+        'total_eggs_with_reject': total_eggs_with_reject,
+        'avg_daily_eggs': round(total_eggs / qs.count(), 1),
+        'fcr': fcr,
+        'egg_mass_kg': round(egg_mass_kg, 2),
+        'breakdown': {
+            'small': agg['total_eggs_small'] or 0,
+            'medium': agg['total_eggs_medium'] or 0,
+            'large': agg['total_eggs_large'] or 0,
+            'xl': agg['total_eggs_xl'] or 0,
+        },
+        'live_birds': batch.initial_population - (agg['total_mortality'] or 0),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def report_csv(request, batch_id):
+    """Return daily logs for a batch as a downloadable CSV file."""
+    import csv
+    from django.http import HttpResponse
+
+    try:
+        batch = FlockBatch.objects.get(batch_id=batch_id)
+    except FlockBatch.DoesNotExist:
+        return Response({'error': 'Batch not found'}, status=404)
+
+    start_date = request.query_params.get('start_date')
+    end_date = request.query_params.get('end_date')
+
+    qs = DailyLog.objects.filter(batch=batch)
+    if start_date:
+        qs = qs.filter(record_date__gte=start_date)
+    if end_date:
+        qs = qs.filter(record_date__lte=end_date)
+    qs = qs.order_by('record_date')
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="batch_{batch_id}_daily_logs.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        'Date', 'Feed (kg)', 'Water (L)', 'Mortality',
+        'Eggs Small', 'Eggs Medium', 'Eggs Large', 'Eggs XL', 'Eggs Reject',
+        'Total Eggs',
+    ])
+    for log in qs:
+        writer.writerow([
+            log.record_date,
+            log.feed_consumed_kg,
+            log.water_consumed_l,
+            log.mortality_count,
+            log.eggs_small,
+            log.eggs_medium,
+            log.eggs_large,
+            log.eggs_xl,
+            log.eggs_reject,
+            log.total_eggs,
+        ])
+    return response

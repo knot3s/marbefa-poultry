@@ -9,6 +9,7 @@ router = DefaultRouter()
 router.register(r'batches', views.FlockBatchViewSet, basename='batch')
 router.register(r'daily-logs', views.DailyLogViewSet, basename='dailylog')
 router.register(r'alerts', views.AnomalyAlertViewSet, basename='alert')
+router.register(r'users', views.UserViewSet, basename='user')
 
 urlpatterns = [
     # Auth
@@ -26,6 +27,10 @@ urlpatterns = [
 
     # Anomaly detection trigger
     path('anomaly/run/', views.run_anomaly, name='run-anomaly'),
+
+    # Reports
+    path('reports/<int:batch_id>/summary/', views.report_summary, name='report-summary'),
+    path('reports/<int:batch_id>/csv/', views.report_csv, name='report-csv'),
 
     # Router
     path('', include(router.urls)),

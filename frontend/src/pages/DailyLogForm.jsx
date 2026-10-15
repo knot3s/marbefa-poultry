@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFloppyDisk } from '@fortawesome/free-solid-svg-icons';
-import client from '../api/client';
+import { api } from '../api/client';
 
 const emptyForm = {
   batch: '',
@@ -23,7 +23,7 @@ export default function DailyLogForm() {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    client.get('/batches/').then((res) => setBatches(res.data));
+    api.batches().then((res) => setBatches(res.data));
   }, []);
 
   const totalEggs =
@@ -51,7 +51,7 @@ export default function DailyLogForm() {
         eggs_xl: Number(form.eggs_xl),
         eggs_reject: Number(form.eggs_reject),
       };
-      await client.post('/daily-logs/', payload);
+      await api.createDailyLog(payload);
       setResult({ type: 'success', msg: `Daily log saved. Total eggs: ${totalEggs}. Anomaly check ran automatically.` });
       setForm({ ...emptyForm, batch: form.batch });
     } catch (err) {
@@ -63,12 +63,15 @@ export default function DailyLogForm() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold text-slate-800 mb-4">Daily Log Entry</h1>
+    <div className="p-4 md:p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Daily Log Entry</h1>
+        <p className="text-sm text-slate-500">Record daily production data for a batch</p>
+      </div>
 
       {result && (
-        <div className={`mb-4 p-3 rounded-md text-sm ${
-          result.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+        <div className={`p-3 rounded-lg text-sm border ${
+          result.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
         }`}>
           {result.msg}
         </div>
