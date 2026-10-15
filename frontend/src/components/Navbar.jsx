@@ -93,20 +93,6 @@ export default function Navbar() {
             <FontAwesomeIcon icon={faRightFromBracket} />
           </button>
         </div>
-        <div className="flex overflow-x-auto gap-1 px-2 pb-2">
-          {visibleLinks.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 ${
-                location.pathname === link.to ? 'bg-primary-dark' : 'hover:bg-primary-dark'
-              }`}
-            >
-              <FontAwesomeIcon icon={link.icon} />
-              {link.label}
-            </Link>
-          ))}
-        </div>
       </nav>
 
       {/* Mobile bottom nav */}
